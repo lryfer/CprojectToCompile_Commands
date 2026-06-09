@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
-"""
+DESCRIPTION = """
 Generate compile_commands.json from Eclipse .cproject / .project.
-
-Usage:
-    python3 gen_compile_commands.py [--config Debug] [--output compile_commands.json]
 
 The script must be run from the Project/ root directory
 """
@@ -16,7 +13,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
+PROGRAM_NAME = "cpcc.py"
 PROJECT_DIR  = Path(__file__).resolve().parent.parent   # …/Project/
 ECLIPSE_DIR  = PROJECT_DIR / "eclipse"
 CPROJECT     = ECLIPSE_DIR / ".cproject"
@@ -194,7 +191,10 @@ def asm_entry(src: Path, settings: dict) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=DESCRIPTION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--config", "-c", default="Debug",
         help="Eclipse configuration to use (default: Debug)",
@@ -205,6 +205,12 @@ def main() -> None:
         help="Output path (default: Project/compile_commands.json)",
     )
     args = parser.parse_args()
+
+    if not CPROJECT.exists():
+        sys.exit(
+            f"error: eclipse/.cproject not found.\n"
+            f"Try '{PROGRAM_NAME} --help' for more information."
+        )
 
     print(f"Parsing .cproject [{args.config}] …")
     settings = parse_cproject(args.config)
@@ -232,4 +238,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main():::
