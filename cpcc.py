@@ -210,7 +210,12 @@ def main() -> None:
     CPROJECT     = ECLIPSE_DIR / ".cproject"
     PROJECT_FILE = ECLIPSE_DIR / ".project"
 
-    output_path = Path(args.output) if args.output else PROJECT_DIR / "compile_commands.json"
+    if args.output:
+        output_path = Path(args.output)
+        if output_path.is_dir():
+            output_path = output_path / "compile_commands.json"
+    else:
+        output_path = PROJECT_DIR / "compile_commands.json"
 
     if not CPROJECT.exists():
         sys.exit(
