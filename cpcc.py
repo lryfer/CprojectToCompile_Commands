@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 DESCRIPTION = """
 Generate compile_commands.json from Eclipse .cproject / .project.
-
-The script must be run from the Project/ root directory
 """
 
 import argparse
@@ -13,11 +11,8 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
 PROGRAM_NAME = "cpcc.py"
-PROJECT_DIR  = Path(__file__).resolve().parent.parent   # …/Project/
-ECLIPSE_DIR  = PROJECT_DIR / "eclipse"
-CPROJECT     = ECLIPSE_DIR / ".cproject"
-PROJECT_FILE = ECLIPSE_DIR / ".project"
 
 ARM_PREFIX = os.environ.get("ARM_PREFIX", "arm-none-eabi-")
 
@@ -32,6 +27,11 @@ CPU_FLAGS = [
 C_EXTS   = {".c"}
 ASM_EXTS = {".s", ".S"}
 
+# Set by main() after --project-dir is resolved.
+PROJECT_DIR:  Path
+ECLIPSE_DIR:  Path
+CPROJECT:     Path
+PROJECT_FILE: Path
 
 
 def _resolve(raw: str) -> str:
@@ -39,9 +39,7 @@ def _resolve(raw: str) -> str:
     s = raw.strip().strip('"')
     s = s.replace("${ProjDirPath}", str(ECLIPSE_DIR))
     s = s.replace("PARENT-1-PROJECT_LOC", str(PROJECT_DIR))
-    # Normalise (collapse eclipse/../ etc.)
     return str(Path(s).resolve())
-
 
 
 def get_version_flags() -> list[str]:
@@ -56,7 +54,6 @@ def get_version_flags() -> list[str]:
     except Exception as exc:
         print(f"[warn] could not run version.sh: {exc}", file=sys.stderr)
         return []
-
 
 
 def _find_configuration(root: ET.Element, config_name: str) -> ET.Element | None:
@@ -83,10 +80,10 @@ def parse_cproject(config_name: str = "Debug") -> dict:
     if cfg is None:
         sys.exit(f"[error] configuration '{config_name}' not found in .cproject")
 
-    include_paths:    list[str] = []
-    defines:          list[str] = []
-    other_c_flags:    list[str] = []
-    forced_includes:  list[str] = []
+    include_paths:     list[str] = []
+    defines:           list[str] = []
+    other_c_flags:     list[str] = []
+    forced_includes:   list[str] = []
     asm_include_paths: list[str] = []
     asm_defines:       list[str] = []
 
@@ -137,7 +134,6 @@ def parse_cproject(config_name: str = "Debug") -> dict:
     }
 
 
-
 def get_source_files() -> list[Path]:
     """Return source files declared as linked resources (type=1) in .project."""
     tree = ET.parse(PROJECT_FILE)
@@ -154,7 +150,6 @@ def get_source_files() -> list[Path]:
         if p.suffix in C_EXTS | ASM_EXTS:
             files.append(p)
     return files
-
 
 
 def c_entry(src: Path, settings: dict, version_flags: list[str]) -> dict:
@@ -189,40 +184,52 @@ def asm_entry(src: Path, settings: dict) -> dict:
     return {"directory": str(PROJECT_DIR), "file": str(src), "arguments": args}
 
 
-
 def main() -> None:
+    global PROJECT_DIR, ECLIPSE_DIR, CPROJECT, PROJECT_FILE
+
     parser = argparse.ArgumentParser(
         description=DESCRIPTION,
         formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "project_dir",
+        help="Project root directory (the one containing the eclipse/ folder)",
     )
     parser.add_argument(
         "--config", "-c", default="Debug",
         help="Eclipse configuration to use (default: Debug)",
     )
     parser.add_argument(
-        "--output", "-o",
-        default=str(PROJECT_DIR / "compile_commands.json"),
-        help="Output path (default: Project/compile_commands.json)",
+        "--output", "-o", default=None,
+        help="Output path (default: <project-dir>/compile_commands.json)",
     )
     args = parser.parse_args()
 
+    PROJECT_DIR  = Path(args.project_dir).resolve()
+    ECLIPSE_DIR  = PROJECT_DIR / "eclipse"
+    CPROJECT     = ECLIPSE_DIR / ".cproject"
+    PROJECT_FILE = ECLIPSE_DIR / ".project"
+
+    output_path = Path(args.output) if args.output else PROJECT_DIR / "compile_commands.json"
+
     if not CPROJECT.exists():
         sys.exit(
-            f"error: eclipse/.cproject not found.\n"
-            f"Try '{PROGRAM_NAME} --help' for more information."
+            f"[error] {CPROJECT} not found.\n"
+            f"Make sure the path points to the project root (the folder containing eclipse/)."
         )
 
-    print(f"Parsing .cproject [{args.config}] …")
+    print(f"Project root: {PROJECT_DIR}")
+    print(f"Parsing .cproject [{args.config}] ...")
     settings = parse_cproject(args.config)
     print(f"  {len(settings['include_paths'])} include paths, "
           f"{len(settings['defines'])} defines")
 
-    print("Running version.sh …")
+    print("Running version.sh ...")
     version_flags = get_version_flags()
     if version_flags:
         print(f"  {' '.join(version_flags)}")
 
-    print("Parsing .project for source files …")
+    print("Parsing .project for source files ...")
     sources = get_source_files()
     print(f"  found {len(sources)} source file(s)")
 
@@ -232,10 +239,10 @@ def main() -> None:
             entries.append(c_entry(src, settings, version_flags))
         elif src.suffix in ASM_EXTS:
             entries.append(asm_entry(src, settings))
-    out = Path(args.output)
-    out.write_text(json.dumps(entries, indent=2))
-    print(f"Written {len(entries)} entries → {out}")
+
+    output_path.write_text(json.dumps(entries, indent=2))
+    print(f"Written {len(entries)} entries -> {output_path}")
 
 
 if __name__ == "__main__":
-    main():::
+    main()
